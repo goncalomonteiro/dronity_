@@ -1,4 +1,5 @@
 #include "commands/add_keyframe.hpp"
+#include "verity/db.hpp"
 #include <random>
 
 namespace verity {

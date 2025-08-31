@@ -1,4 +1,5 @@
 #include "commands/move_selection.hpp"
+#include "verity/db.hpp"
 
 namespace verity {
 

@@ -95,7 +95,9 @@ int main() {
     stack.redo();
     assert(get_t(db, key_id) == 1050);
 
-    // Undo add
+    // Undo move again (back to 1000), then undo add (remove row)
+    stack.undo();
+    assert(get_t(db, key_id) == 1000);
     stack.undo();
     assert(count(db, "keyframes") == 0);
 

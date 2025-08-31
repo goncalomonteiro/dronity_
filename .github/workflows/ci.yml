@@ -100,6 +100,11 @@ jobs:
           python scripts/sceneproj.py --json add-key tmp.sceneproj --track-id $TRACK_ID --t 1000 --value '{"x":1}' --interp auto --id 33333333-3333-3333-3333-333333333333
           python scripts/sceneproj.py --json autosave tmp.sceneproj --slot 1
           python scripts/sceneproj.py --json restore tmp.sceneproj --slot 1
+      - name: Upload .sceneproj artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-smoke-sceneproj
+          path: tmp.sceneproj/**
       - name: Verify contents
         run: |
           python - << 'PY'
@@ -115,3 +120,37 @@ jobs:
               conn.close()
           print('OK')
           PY
+
+  desktop-sqlite-tests:
+    name: Desktop (SQLite command tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build libsqlite3-dev
+      - name: Build with SQLite
+        run: |
+          cmake -S desktop -B desktop/build -G Ninja -DENABLE_SQLITE=ON
+          cmake --build desktop/build --config Release
+      - name: Run tests
+        run: ctest --test-dir desktop/build --output-on-failure
+
+  desktop-qt-shell:
+    name: Desktop (Qt shell build)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build qt6-base-dev
+      - name: Build Qt shell
+        run: |
+          cmake -S desktop -B desktop/build -G Ninja -DENABLE_QT_SHELL=ON
+          cmake --build desktop/build --config Release
+      - name: Verify Qt binary exists
+        run: |
+          test -f desktop/build/verity_qt_shell || (echo "Qt shell not built" && exit 1)

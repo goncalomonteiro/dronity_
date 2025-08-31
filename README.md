@@ -79,3 +79,43 @@ Why this step matters
 
 Definition of Done
 - You can create/open/save a project; add a scene/track/keyframe; and autosave + restore via the CLI above.
+
+## Step 2 — Command Bus (Undo/Redo) & Desktop Shell
+
+What was done
+- Command framework (C++): `desktop/include/verity/command.hpp`, `desktop/src/command.cpp`.
+  - ICommand interface, CommandStack with do/undo/redo and batching.
+  - Transaction hooks via `IStorage` (with `NullStorage` default) and revision persistence hook.
+- Sample commands: `AddKeyframeCommand`, `MoveSelectionCommand` under `desktop/src/commands/`.
+- Optional SQLite-backed storage: `SqliteStorage` interface (`desktop/include/verity/db.hpp`, `desktop/src/db.cpp`) compiled when `ENABLE_SQLITE=ON`.
+- Desktop runner: `verity_desktop_runner` exercises the command bus with sample commands.
+- Optional Qt shell scaffold: `desktop/src/main_qt.cpp` (dockable Timeline/Graph/Viewport placeholders), built with `-DENABLE_QT_SHELL=ON` if Qt6 Widgets is available.
+
+Usage
+- Build desktop targets:
+  - `cmake -S desktop -B desktop/build -G Ninja`
+  - `cmake --build desktop/build`
+  - Run: `./desktop/build/verity_desktop_runner`
+- Enable SQLite integration (local dev):
+  - Install SQLite dev libs, then configure with `-DENABLE_SQLITE=ON`.
+  - Example: `cmake -S desktop -B desktop/build -G Ninja -DENABLE_SQLITE=ON`
+- Optional Qt shell:
+  - If Qt6 Widgets is installed: `cmake -S desktop -B desktop/build -G Ninja -DENABLE_QT_SHELL=ON`
+  - Run: `./desktop/build/verity_qt_shell`
+
+Why this step matters
+- Ensures edits are reversible, consistent, and transaction-wrapped.
+- Provides a clear API for desktop tooling and later Python bindings.
+- Qt shell scaffold unblocks UI work (panels, docking) without blocking engine integration.
+
+Definition of Done
+- Commands execute with transaction hooks, support undo/redo, and persist revision stubs.
+- App shell scaffold exists; future work will wire actual UI interactions to the command bus and DB.
+
+Additions implemented now
+- SQL-backed commands (optional): When built with `-DENABLE_SQLITE=ON`, `AddKeyframeCommand` inserts into `keyframes`, `MoveSelectionCommand` updates `t_ms`, and undo paths delete/restore.
+- Command tests: `desktop/tests/commands_tests.cpp` validates do/undo/redo against a temp SQLite DB. CI job “Desktop (SQLite command tests)” installs `libsqlite3-dev`, builds with `-DENABLE_SQLITE=ON`, and runs CTest.
+- Autosave cadence: `desktop/include/verity/autosave.hpp` provides an `AutosaveScheduler` that periodically snapshots `project.db` to `snapshots/slot1.db`.
+
+Notes on undo stack persistence
+- Revisions are recorded in the DB (`revisions` table) during command execution. A lightweight journal/restore strategy can reconstruct history on startup, and will be finalized alongside the desktop shell wiring in later steps.

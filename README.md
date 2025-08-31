@@ -46,3 +46,36 @@ Why this step matters
 
 Definition of Done (met)
 - A trivial change touching all stacks builds and tests in CI, exercising compilers, unit tests, linters, and security scans.
+
+## Step 1 — Data Schema & Project Package (Desktop)
+
+What was done
+- Defined `.sceneproj/` package layout: directory with `project.db` (SQLite, WAL), and subfolders `/assets`, `/bakes`, `/thumbs`, `/snapshots`.
+- Added SQLite schema and migrations:
+  - `desktop/schema/schema.sql` with tables: `projects`, `scenes`, `tracks`, `keyframes`, `curves`, `assets`, `revisions`, `jobs`, `events`, and `schema_migrations`.
+  - `desktop/schema/migrations/V0001__init.sql` bootstraps schema and records version.
+- Implemented package IO utility:
+  - `scripts/sceneproj.py` CLI to create/open a project, add scene/track/keyframe, and autosave/restore snapshots.
+- Safety defaults: `PRAGMA foreign_keys=ON`, `journal_mode=WAL`, `synchronous=NORMAL`.
+
+Usage
+- Create project: `python scripts/sceneproj.py create MyShow.sceneproj --name "My Show"`
+- Open/inspect: `python scripts/sceneproj.py open MyShow.sceneproj`
+- Add scene: `python scripts/sceneproj.py add-scene MyShow.sceneproj --name "Act 1"`
+- Add track: `python scripts/sceneproj.py add-track MyShow.sceneproj --scene-id <SCENE_UUID> --name PathA --kind curve`
+- Add key: `python scripts/sceneproj.py add-key MyShow.sceneproj --track-id <TRACK_UUID> --t 1000 --value '{"x":1}' --interp auto`
+- Autosave/restore: `python scripts/sceneproj.py autosave MyShow.sceneproj --slot 1` / `restore ... --slot 1`
+
+Niceties
+- JSON mode for scripting: add `--json` to any command for machine-readable output. Example: `python scripts/sceneproj.py --json open MyShow.sceneproj`.
+- Deterministic IDs: `add-scene`, `add-track`, and `add-key` accept `--id <uuid>` for reproducible pipelines.
+- Migration scaffolding: `python scripts/new_migration.py "add_column_x"` creates `desktop/schema/migrations/V####__add_column_x.sql` with a boilerplate.
+- CI smoke test: Workflow “Desktop schema smoke” creates a `.sceneproj`, adds a scene/track/keyframe, autosaves/restores, and verifies counts in SQLite.
+
+Why this step matters
+- Establishes a durable, transactional project format aligned with the desktop editor’s needs.
+- Enables early scripting and test flows before the full Qt shell arrives.
+- WAL mode + foreign keys provide safety and integrity; snapshots/autosave support recovery.
+
+Definition of Done
+- You can create/open/save a project; add a scene/track/keyframe; and autosave + restore via the CLI above.

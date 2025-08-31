@@ -80,3 +80,38 @@ jobs:
       - name: Build
         working-directory: web
         run: npm run build
+
+  desktop-schema-smoke:
+    name: Desktop schema smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Create project and add data
+        run: |
+          python scripts/sceneproj.py --json create tmp.sceneproj --name "CI Smoke"
+          # fixed UUIDs for deterministic CI
+          SCENE_ID=11111111-1111-1111-1111-111111111111
+          TRACK_ID=22222222-2222-2222-2222-222222222222
+          python scripts/sceneproj.py --json add-scene tmp.sceneproj --name "Act 1" --id $SCENE_ID
+          python scripts/sceneproj.py --json add-track tmp.sceneproj --scene-id $SCENE_ID --name PathA --kind curve --id $TRACK_ID
+          python scripts/sceneproj.py --json add-key tmp.sceneproj --track-id $TRACK_ID --t 1000 --value '{"x":1}' --interp auto --id 33333333-3333-3333-3333-333333333333
+          python scripts/sceneproj.py --json autosave tmp.sceneproj --slot 1
+          python scripts/sceneproj.py --json restore tmp.sceneproj --slot 1
+      - name: Verify contents
+        run: |
+          python - << 'PY'
+          import json, sqlite3
+          import sys
+          conn = sqlite3.connect('tmp.sceneproj/project.db')
+          try:
+              assert conn.execute('select count(*) from projects').fetchone()[0] == 1
+              assert conn.execute('select count(*) from scenes').fetchone()[0] == 1
+              assert conn.execute('select count(*) from tracks').fetchone()[0] == 1
+              assert conn.execute('select count(*) from keyframes').fetchone()[0] == 1
+          finally:
+              conn.close()
+          print('OK')
+          PY

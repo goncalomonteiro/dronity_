@@ -116,14 +116,28 @@ def add_scene(path: Path, name: str, forced_id: str | None, json_out: bool) -> N
                 (sid, proj[0], name, now, now),
             )
         if json_out:
-            print(json.dumps({"ok": True, "scene": {"id": sid, "name": name}}))
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "scene": {"id": sid, "name": name},
+                    }
+                )
+            )
         else:
             print(f"Added scene {name} ({sid})")
     finally:
         conn.close()
 
 
-def add_track(path: Path, scene_id: str, name: str, kind: str, forced_id: str | None, json_out: bool) -> None:
+def add_track(
+    path: Path,
+    scene_id: str,
+    name: str,
+    kind: str,
+    forced_id: str | None,
+    json_out: bool,
+) -> None:
     conn = connect_db(path / "project.db")
     try:
         tid = forced_id or str(uuid.uuid4())
@@ -134,14 +148,34 @@ def add_track(path: Path, scene_id: str, name: str, kind: str, forced_id: str | 
                 (tid, scene_id, name, kind, now, now),
             )
         if json_out:
-            print(json.dumps({"ok": True, "track": {"id": tid, "scene_id": scene_id, "name": name, "kind": kind}}))
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "track": {
+                            "id": tid,
+                            "scene_id": scene_id,
+                            "name": name,
+                            "kind": kind,
+                        },
+                    }
+                )
+            )
         else:
             print(f"Added track {name} ({tid}) to scene {scene_id}")
     finally:
         conn.close()
 
 
-def add_key(path: Path, track_id: str, t_ms: int, value_json: str, interp: str, forced_id: str | None, json_out: bool) -> None:
+def add_key(
+    path: Path,
+    track_id: str,
+    t_ms: int,
+    value_json: str,
+    interp: str,
+    forced_id: str | None,
+    json_out: bool,
+) -> None:
     conn = connect_db(path / "project.db")
     try:
         # validate JSON early
@@ -154,7 +188,18 @@ def add_key(path: Path, track_id: str, t_ms: int, value_json: str, interp: str, 
                 (kid, track_id, t_ms, value_json, interp, now, now),
             )
         if json_out:
-            print(json.dumps({"ok": True, "keyframe": {"id": kid, "track_id": track_id, "t_ms": t_ms}}))
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "keyframe": {
+                            "id": kid,
+                            "track_id": track_id,
+                            "t_ms": t_ms,
+                        },
+                    }
+                )
+            )
         else:
             print(f"Added keyframe ({kid}) at {t_ms}ms to track {track_id}")
     finally:

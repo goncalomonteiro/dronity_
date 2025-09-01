@@ -1,0 +1,8 @@
+set(__QT_DEPLOY_TARGET_verity_desktop_FILE C:/Users/gonca/Desktop/repos/dronity_/desktop/build-msvc/RelWithDebInfo/verity_desktop.lib)
+set(__QT_DEPLOY_TARGET_verity_desktop_TYPE STATIC_LIBRARY)
+set(__QT_DEPLOY_TARGET_verity_desktop_runner_FILE C:/Users/gonca/Desktop/repos/dronity_/desktop/build-msvc/RelWithDebInfo/verity_desktop_runner.exe)
+set(__QT_DEPLOY_TARGET_verity_desktop_runner_TYPE EXECUTABLE)
+set(__QT_DEPLOY_TARGET_verity_desktop_runner_RUNTIME_DLLS )
+set(__QT_DEPLOY_TARGET_verity_qt_shell_FILE C:/Users/gonca/Desktop/repos/dronity_/desktop/build-msvc/RelWithDebInfo/verity_qt_shell.exe)
+set(__QT_DEPLOY_TARGET_verity_qt_shell_TYPE EXECUTABLE)
+set(__QT_DEPLOY_TARGET_verity_qt_shell_RUNTIME_DLLS C:/Qt/6.9.2/msvc2022_64/bin/Qt6Widgets.dll;C:/Qt/6.9.2/msvc2022_64/bin/Qt6Gui.dll;C:/Qt/6.9.2/msvc2022_64/bin/Qt6Core.dll)

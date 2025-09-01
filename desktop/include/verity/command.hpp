@@ -47,6 +47,7 @@ public:
 struct CommandBatch {
     std::string label;
     std::vector<std::unique_ptr<ICommand>> commands;
+    std::vector<std::string> diffs; // serialized diffs for revision coalescing
 };
 
 class CommandStack {
@@ -71,7 +72,7 @@ private:
     std::optional<CommandBatch> batch_;
     std::vector<std::unique_ptr<ICommand>> undo_;
     std::vector<std::unique_ptr<ICommand>> redo_;
+    bool batch_failed_ {false};
 };
 
 } // namespace verity
-

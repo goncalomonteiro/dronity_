@@ -2,6 +2,9 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#if VERITY_DESKTOP_SQLITE
+#include <sqlite3.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -14,8 +17,15 @@ void AutosaveScheduler::snapshotOnce() {
     std::error_code ec;
     fs::create_directories(snaps, ec);
 
-    auto now = std::chrono::system_clock::now();
-    auto t = std::chrono::system_clock::to_time_t(now);
+#if VERITY_DESKTOP_SQLITE
+    // Ensure WAL data is checkpointed before copying the file, best-effort.
+    sqlite3* sdb = nullptr;
+    if (sqlite3_open(db.string().c_str(), &sdb) == SQLITE_OK) {
+        sqlite3_exec(sdb, "PRAGMA wal_checkpoint(FULL);", nullptr, nullptr, nullptr);
+    }
+    if (sdb) sqlite3_close(sdb);
+#endif
+
     std::stringstream ss;
     ss << "slot1.db"; // single slot for simplicity; could rotate by timestamp
     fs::copy_file(db, snaps / ss.str(), fs::copy_options::overwrite_existing, ec);
@@ -31,4 +41,3 @@ void AutosaveScheduler::run() {
 }
 
 } // namespace verity
-

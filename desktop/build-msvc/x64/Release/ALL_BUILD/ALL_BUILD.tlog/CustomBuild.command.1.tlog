@@ -1,0 +1,10 @@
+^C:\USERS\GONCA\DESKTOP\REPOS\DRONITY_\DESKTOP\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/gonca/Desktop/repos/dronity_/desktop -BC:/Users/gonca/Desktop/repos/dronity_/desktop/build-msvc --check-stamp-file C:/Users/gonca/Desktop/repos/dronity_/desktop/build-msvc/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\gonca\Desktop\repos\dronity_\desktop\build-msvc\CMakeFiles\7af43f71c53fbcd72bb23d73e28f24eb\RUN_TESTS_force.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{4F64BBC3-0851-3EB7-98F3-A4259358AD0D}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

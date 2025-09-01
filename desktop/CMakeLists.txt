@@ -9,7 +9,10 @@ option(ENABLE_QT_SHELL "Build Qt shell (requires Qt)" OFF)
 
 add_library(verity_desktop STATIC
     src/command.cpp
+    src/autosave.cpp
+    src/replay.cpp
     include/verity/command.hpp
+    include/verity/replay.hpp
 )
 target_include_directories(verity_desktop PUBLIC include)
 
@@ -29,7 +32,8 @@ if(ENABLE_QT_SHELL)
   find_package(Qt6 COMPONENTS Widgets QUIET)
   if(Qt6_FOUND)
     add_executable(verity_qt_shell src/main_qt.cpp)
-    target_link_libraries(verity_qt_shell PRIVATE Qt6::Widgets)
+    target_include_directories(verity_qt_shell PRIVATE include)
+    target_link_libraries(verity_qt_shell PRIVATE verity_desktop Qt6::Widgets)
     target_compile_definitions(verity_qt_shell PRIVATE VERITY_QT_SHELL=1)
   else()
     message(WARNING "Qt6 not found; Qt shell will not be built.")

@@ -48,6 +48,25 @@ void SqliteStorage::addRevision(const RevisionRecord& r) {
     sqlite3_finalize(stmt);
 }
 
+std::vector<RevisionRecord> SqliteStorage::readRevisions() const {
+    std::vector<RevisionRecord> out;
+    sqlite3_stmt* stmt = nullptr;
+    const char* sql = "SELECT label, diff_json FROM revisions ORDER BY id ASC";
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error("prepare failed for select revisions");
+    }
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const unsigned char* lbl = sqlite3_column_text(stmt, 0);
+        const unsigned char* diff = sqlite3_column_text(stmt, 1);
+        RevisionRecord r;
+        r.label = lbl ? reinterpret_cast<const char*>(lbl) : "";
+        r.diff_json = diff ? reinterpret_cast<const char*>(diff) : "";
+        out.emplace_back(std::move(r));
+    }
+    sqlite3_finalize(stmt);
+    return out;
+}
+
 void SqliteStorage::insertKeyframe(const std::string& key_id,
                                    const std::string& track_id,
                                    int t_ms,

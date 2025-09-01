@@ -17,6 +17,7 @@ public:
     void commit() override;
     void rollback() override;
     void addRevision(const RevisionRecord& r) override;
+    std::vector<RevisionRecord> readRevisions() const;
     // Command helpers
     void insertKeyframe(const std::string& key_id,
                         const std::string& track_id,
@@ -36,6 +37,7 @@ private:
     void commit() override {}
     void rollback() override {}
     void addRevision(const RevisionRecord&) override {}
+    std::vector<RevisionRecord> readRevisions() const { return {}; }
 #endif
 };
 

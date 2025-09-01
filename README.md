@@ -47,6 +47,30 @@ Why this step matters
 Definition of Done (met)
 - A trivial change touching all stacks builds and tests in CI, exercising compilers, unit tests, linters, and security scans.
 
+## Run All App Variants (Quick)
+
+- Desktop runner (NullStorage): `cmake -S desktop -B desktop/build && cmake --build desktop/build && ./desktop/build/verity_desktop_runner`
+- Desktop runner (SQLite):
+  - Create a project: `python scripts/sceneproj.py create MyShow.sceneproj --name "My Show"`
+  - Build with SQLite: `cmake -S desktop -B desktop/build -DENABLE_SQLITE=ON && cmake --build desktop/build`
+  - Run: `./desktop/build/verity_desktop_runner --db MyShow.sceneproj/project.db`
+  - Restore from journal: `./desktop/build/verity_desktop_runner --db MyShow.sceneproj/project.db --restore`
+- Qt shell (UI scaffold):
+  - Ensure Qt6 Widgets is installed. If needed, set `CMAKE_PREFIX_PATH` to your Qt path, e.g. `C:\Qt\6.9.2\msvc2022_64` on Windows.
+  - Configure: `cmake -S desktop -B desktop/build -DENABLE_QT_SHELL=ON`
+  - Build: `cmake --build desktop/build`
+  - Optional autosave: set `VERITY_PROJECT_DIR` to your `.sceneproj` directory before launching.
+  - Run: `./desktop/build/verity_qt_shell`
+- Scripts (project tool): `python scripts/sceneproj.py --help`
+- Engine tests: `cmake -S engine -B engine/build && cmake --build engine/build && ctest --test-dir engine/build --output-on-failure`
+- Backend: `cd backend && pip install -e .[dev] && uvicorn app.main:app --reload`
+- Web: `cd web && npm ci && npm run dev` (or `npm test` / `npm run build`)
+
+Notes (Windows):
+- Use PowerShell 7 (`pwsh`) for `&&`. In Windows PowerShell 5.1, run on separate lines or use `;`.
+- If the Qt shell fails at runtime with missing DLLs, either add `C:\Qt\<ver>\msvc2022_64\bin` to `PATH` or run `windeployqt.exe` on the built `verity_qt_shell.exe`.
+- If CMake says the generator/platform changed, use a new build directory or delete `desktop/build*`.
+
 ## Step 1 — Data Schema & Project Package (Desktop)
 
 What was done

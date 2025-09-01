@@ -230,4 +230,4 @@ jobs:
       - name: Lint & Format check
         run: |
           ruff check scripts
-          black --check scripts
+          black --check -l 100 scripts

@@ -215,6 +215,22 @@ jobs:
           # Verify at least one keyframe was recreated
           sqlite3 fresh.db "SELECT COUNT(*) FROM keyframes;" | awk '{ if ($1 < 1) exit 1 }'
 
+  desktop-e2e-step3:
+    name: Desktop E2E (Steps 0–3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build libsqlite3-dev
+      - name: Run E2E script
+        run: |
+          bash scripts/e2e_step3.sh
+
   scripts:
     name: Scripts (lint/format)
     runs-on: ubuntu-latest

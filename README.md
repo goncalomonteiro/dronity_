@@ -63,6 +63,7 @@ Definition of Done (met)
   - Run: `./desktop/build/verity_qt_shell`
 - Scripts (project tool): `python scripts/sceneproj.py --help`
 - Engine tests: `cmake -S engine -B engine/build && cmake --build engine/build && ctest --test-dir engine/build --output-on-failure`
+  - Engine benchmark (optional): `cmake -S engine -B engine/build -DVERITY_ENGINE_BUILD_BENCH=ON && cmake --build engine/build && ./engine/build/engine_bench`
 - Backend: `cd backend && pip install -e .[dev] && uvicorn app.main:app --reload`
 - Web: `cd web && npm ci && npm run dev` (or `npm test` / `npm run build`)
 
@@ -70,6 +71,40 @@ Notes (Windows):
 - Use PowerShell 7 (`pwsh`) for `&&`. In Windows PowerShell 5.1, run on separate lines or use `;`.
 - If the Qt shell fails at runtime with missing DLLs, either add `C:\Qt\<ver>\msvc2022_64\bin` to `PATH` or run `windeployqt.exe` on the built `verity_qt_shell.exe`.
 - If CMake says the generator/platform changed, use a new build directory or delete `desktop/build*`.
+
+<!-- Step 3 content appears below after Step 2 to preserve order. -->
+
+## Step 3 — Core Curve Engine (C++)
+
+What’s implemented
+- Curve evaluators: Hermite, Bezier (via Hermite‑equivalent control), Catmull‑Rom (centripetal).
+- Constant‑speed option: per‑segment arc‑length LUT for steadier motion.
+- Blending: linear blend between two curves at a given time.
+- API: `createCurve(kind)`, `setKeys(id, keys)`, `setConstantSpeed(id, on)`, `evaluate(id, time)`, `evaluateBlended(a,b,alpha,time)`.
+
+Build & test
+- `cmake -S engine -B engine/build && cmake --build engine/build`
+- `ctest --test-dir engine/build --output-on-failure`
+- Optional benchmark: `cmake -S engine -B engine/build -DVERITY_ENGINE_BUILD_BENCH=ON && cmake --build engine/build && ./engine/build/engine_bench`
+
+Usage (C++ snippet)
+```
+using namespace verity;
+int id = createCurve(CurveKind::Hermite);
+std::vector<Key> keys{{0.f, 0.f, 0.f, 1.f}, {1.f, 1.f, 1.f, 0.f}};
+setKeys(id, keys);
+setConstantSpeed(id, true);
+float v = evaluate(id, 0.5f);
+```
+
+## End‑to‑End Check (Steps 0–3)
+
+Quick scripts
+- Windows (PowerShell 7): `pwsh scripts/e2e_step3.ps1`
+- Linux/macOS: `bash scripts/e2e_step3.sh`
+
+What they do
+- Build desktop (SQLite enabled), create `.sceneproj`, add scene+track, run the desktop runner to record revisions, replay with `--restore`, and verify DB sanity. Use engine tests/bench (above) to validate the curve core.
 
 ## Step 1 — Data Schema & Project Package (Desktop)
 
@@ -143,3 +178,35 @@ Additions implemented now
 
 Notes on undo stack persistence
 - Revisions are recorded in the DB (`revisions` table) during command execution. A lightweight journal/restore strategy can reconstruct history on startup, and will be finalized alongside the desktop shell wiring in later steps.
+
+## Step 3 — Core Curve Engine (C++)
+
+What’s implemented
+- Curve evaluators: Hermite, Bezier (via Hermite-equivalent control), Catmull-Rom (centripetal).
+- Constant-speed option: per-segment arc-length LUT for steadier motion.
+- Blending: linear blend between two curves at a given time.
+- API: `createCurve(kind)`, `setKeys(id, keys)`, `setConstantSpeed(id, on)`, `evaluate(id, time)`, `evaluateBlended(a,b,alpha,time)`.
+
+Build & test
+- `cmake -S engine -B engine/build && cmake --build engine/build`
+- `ctest --test-dir engine/build --output-on-failure`
+- Optional benchmark: `cmake -S engine -B engine/build -DVERITY_ENGINE_BUILD_BENCH=ON && cmake --build engine/build && ./engine/build/engine_bench`
+
+Usage (C++ snippet)
+```
+using namespace verity;
+int id = createCurve(CurveKind::Hermite);
+std::vector<Key> keys{{0.f, 0.f, 0.f, 1.f}, {1.f, 1.f, 1.f, 0.f}};
+setKeys(id, keys);
+setConstantSpeed(id, true);
+float v = evaluate(id, 0.5f);
+```
+
+## End-to-End Check (Steps 0–3)
+
+Quick scripts
+- Windows (PowerShell 7): `pwsh scripts/e2e_step3.ps1`
+- Linux/macOS: `bash scripts/e2e_step3.sh`
+
+What they do
+- Build desktop (SQLite enabled), create `.sceneproj`, add scene+track, run the desktop runner to record revisions, replay with `--restore`, and verify DB sanity. Use engine tests/bench (above) to validate the curve core.

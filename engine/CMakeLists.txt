@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(VERITY_ENGINE_BUILD_TESTS "Build engine tests" ON)
+option(VERITY_ENGINE_BUILD_BENCH "Build engine microbenchmarks" OFF)
 
 add_library(verity_engine STATIC
     src/engine.cpp
@@ -19,3 +20,7 @@ if(VERITY_ENGINE_BUILD_TESTS)
   add_test(NAME engine_smoke COMMAND engine_tests)
 endif()
 
+if(VERITY_ENGINE_BUILD_BENCH)
+  add_executable(engine_bench bench/curve_bench.cpp)
+  target_link_libraries(engine_bench PRIVATE verity_engine)
+endif()

@@ -40,4 +40,8 @@ void AutosaveScheduler::run() {
     }
 }
 
+void AutosaveScheduler::snapshotNow() {
+    snapshotOnce();
+}
+
 } // namespace verity

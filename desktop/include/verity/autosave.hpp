@@ -24,6 +24,9 @@ public:
         if (worker_.joinable()) worker_.join();
     }
 
+    // Trigger a snapshot immediately (safe to call whether running or not)
+    void snapshotNow();
+
 private:
     void run();
     void snapshotOnce();
@@ -35,4 +38,3 @@ private:
 };
 
 } // namespace verity
-

@@ -208,9 +208,50 @@ This glossary explains the concepts introduced in each step. For every term you�
 
 ---
 
+## Step 4 — Viewport & Rendering
+
+- Viewport
+  - Simple: The window area where you see the scene.
+  - Technical: A render surface embedded in the Qt app (QOpenGLWidget).
+  - Example: `ViewportWidget` renders a grid, an animated path, and an FPS overlay.
+
+- QOpenGLWidget
+  - Simple: A Qt widget that lets us draw with the GPU.
+  - Technical: OpenGL‑backed widget with automatic double buffering and repaint integration.
+  - Example: `desktop/src/viewport/ViewportWidget.cpp`.
+
+- FPS Overlay
+  - Simple: A small number in the corner showing frames per second.
+  - Technical: A moving average of frame times (ms → FPS = 1000/avg) drawn with QPainter.
+  - Example: `ViewportWidget::paintGL()` displays `FPS: X.Y`.
+
+- Camera Controls (Pan/Zoom)
+  - Simple: Drag to move the view; wheel to zoom in/out.
+  - Technical: Update pan offset and zoom factor; map world → screen via scale/translate.
+  - Example: `mouseMoveEvent()` and `wheelEvent()` adjust `pan_` and `zoom_`.
+
+- Double Buffering
+  - Simple: Draw the next frame off‑screen and swap it in, so it doesn’t flicker.
+  - Technical: QOpenGLWidget renders to a back buffer by default; swap occurs after paintGL.
+  - Example: Used implicitly by QOpenGLWidget; we call `update()` to schedule the next frame.
+
+- Culling
+  - Simple: Skip drawing things that are off‑screen.
+  - Technical: Visibility tests reject primitives outside the view frustum.
+  - Example: Placeholder for future work when we feed larger path sets to the GPU.
+
+- GPU Buffers (VBOs)
+  - Simple: Upload points/lines once and draw them fast.
+  - Technical: Vertex Buffer Objects in OpenGL store geometry on the GPU.
+  - Example: Viewport draws engine‑sampled trajectories from a VBO as a line strip.
+
+- Keybinds / HUD
+  - Simple: Keyboard and on‑screen hints (e.g., press “R” to reset view).
+  - Technical: Event handlers update camera state; HUD text and graphs drawn each frame.
+  - Example: `ViewportWidget` shows FPS and controls; `R` resets pan/zoom.
+
 ## Practical Restore Notes (Revisions)
 
 - Simple: Revisions are tiny change notes. To recover, start from a clean DB and replay the notes. If you replay on a DB that already has the changes, you’ll try to insert duplicates.
 - Technical: Replay is idempotent only if we add UPSERT/last‑applied markers. Our E2E restores into a fresh DB to avoid primary‑key collisions while proving journal sufficiency.
 - Example: `scripts/e2e_step3.(ps1|sh)` copies `revisions` into a new DB, seeds minimal rows, then runs `--restore`.
-

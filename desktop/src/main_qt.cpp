@@ -9,6 +9,7 @@
 #include <QAction>
 #include <cstdlib>
 #include <memory>
+#include "viewport/ViewportWidget.hpp"
 
 class MainWindow : public QMainWindow {
 public:
@@ -22,9 +23,9 @@ public:
         graph->setWidget(new QLabel("Graph placeholder"));
         addDockWidget(Qt::RightDockWidgetArea, graph);
 
-        auto* viewport = new QDockWidget("Viewport", this);
-        viewport->setWidget(new QLabel("Viewport placeholder"));
-        addDockWidget(Qt::LeftDockWidgetArea, viewport);
+        auto* viewportDock = new QDockWidget("Viewport", this);
+        viewportDock->setWidget(new ViewportWidget(this));
+        addDockWidget(Qt::LeftDockWidgetArea, viewportDock);
         setCentralWidget(new QLabel("Scene"));
 
         // Menu
@@ -39,7 +40,7 @@ public:
             autosaver_ = std::make_unique<verity::AutosaveScheduler>(projectDirEnv, std::chrono::seconds(60));
             autosaver_->start();
             projectDir_ = projectDirEnv;
-            statusBar()->showMessage(QString("Autosave: On — ") + projectDir_.c_str());
+            statusBar()->showMessage(QString("Autosave: On - ") + projectDir_.c_str());
             connect(saveSnap, &QAction::triggered, this, [this]() {
                 if (autosaver_) autosaver_->snapshotNow();
             });

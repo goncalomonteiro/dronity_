@@ -10,6 +10,10 @@ Stacks
 - `scripts`: Python utilities (project/package/migrations, e2e)
 - `ops`: CI/CD and ADRs
 
+Docs quick links
+- Implementation details (what’s implemented + step‑scoped improvements): `IMPLEMENTATION_DETAILS.md`
+- Glossary (terms per step, simple + technical + project examples): `glossary.md`
+
 ---
 
 ## Step 0 — Project Bootstrap & Guardrails
@@ -99,16 +103,37 @@ Stacks
 
 ---
 
-## End‑to‑End Scripts
+## Step 4 — Desktop Viewport Integration
 
-- Windows: `pwsh scripts/e2e_step3.ps1`
-- Linux/macOS: `bash scripts/e2e_step3.sh`
-- They build desktop (SQLite), create a `.sceneproj`, add scene/track, run the runner to record revisions, replay with `--restore`, and verify DB state.
+- Activities & Purpose: Add a real viewport inside the Qt shell to visualize motion at a stable frame rate. Replace the placeholder with engine‑evaluated trajectories rendered via GPU vertex buffers (VBOs). Provide pan/zoom controls, an FPS overlay, and a quick “R to reset view”.
+- Inputs: Mouse drag (pan), mouse wheel (zoom), “R” key (reset); time progression drives animation.
+- Outputs (locations):
+  - Viewport widget: `desktop/include/viewport/ViewportWidget.hpp`, `desktop/src/viewport/ViewportWidget.cpp` (OpenGL, VBO path drawing, HUD, keybinds).
+  - Qt shell integration: `desktop/src/main_qt.cpp` (viewport dock replaces placeholder label).
+  - Build: `desktop/CMakeLists.txt` now links `Qt6::OpenGLWidgets` and `verity_engine` (via `add_subdirectory`), so the viewport samples curves from the engine.
+- Automated Tests (CI):
+  - Build: “CI / Desktop (Qt shell build)” builds the shell with the viewport and engine linkage.
+  - E2E: unchanged; viewport FPS/interaction is validated manually for now.
+- Manual Run:
+  - Build Qt shell: `cmake -S desktop -B desktop/build -DENABLE_QT_SHELL=ON && cmake --build desktop/build`
+  - Run: `./desktop/build/verity_qt_shell`
+  - Interact: Drag to pan, wheel to zoom, press “R” to reset; check the FPS overlay.
+  - Optional autosave: set `VERITY_PROJECT_DIR=MyShow.sceneproj` before launching.
+- Architecture Evolution: The shell now renders engine‑driven trajectories using GPU buffers. QOpenGLWidget’s double buffering smooths frames; later we’ll batch many paths, add culling, and pass transforms directly from the engine to GPU for large scenes.
+
+---
+
+## End-to-End Scripts
+
+- Windows: pwsh scripts/e2e_step3.ps1
+- Linux/macOS: ash scripts/e2e_step3.sh
+- They build desktop (SQLite), create a .sceneproj, add scene/track, run the runner to record revisions, replay with --restore, and verify DB state.
 
 ---
 
 ## Notes & Tips
-- Use PowerShell 7 (`pwsh`) on Windows for `&&` chaining; Windows PowerShell 5.1 requires separate lines or `;`.
-- If the Qt shell misses DLLs on Windows, add your Qt `bin` to `PATH` or run `windeployqt` for the executable.
+- Use PowerShell 7 (pwsh) on Windows for && chaining; Windows PowerShell 5.1 requires separate lines or ;.
+- If the Qt shell misses DLLs on Windows, add your Qt in to PATH or run windeployqt for the executable.
 - If CMake complains about generator/platform changes, use a fresh build directory.
 
+---

@@ -3,6 +3,7 @@ project(verity_desktop LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_AUTOMOC ON)
 
 option(ENABLE_SQLITE "Enable SQLite-backed storage for desktop" OFF)
 option(ENABLE_QT_SHELL "Build Qt shell (requires Qt)" OFF)
@@ -29,11 +30,19 @@ target_link_libraries(verity_desktop_runner PRIVATE verity_desktop)
 
 # Optional Qt shell scaffold (disabled by default)
 if(ENABLE_QT_SHELL)
-  find_package(Qt6 COMPONENTS Widgets QUIET)
+  find_package(Qt6 COMPONENTS Widgets OpenGLWidgets QUIET)
   if(Qt6_FOUND)
-    add_executable(verity_qt_shell src/main_qt.cpp)
+    # Bring in engine for sampling trajectories in the viewport
+    set(VERITY_ENGINE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(VERITY_ENGINE_BUILD_BENCH OFF CACHE BOOL "" FORCE)
+    add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../engine ${CMAKE_CURRENT_BINARY_DIR}/engine_ext)
+    add_executable(verity_qt_shell
+      src/main_qt.cpp
+      src/viewport/ViewportWidget.cpp
+      include/viewport/ViewportWidget.hpp
+    )
     target_include_directories(verity_qt_shell PRIVATE include)
-    target_link_libraries(verity_qt_shell PRIVATE verity_desktop Qt6::Widgets)
+    target_link_libraries(verity_qt_shell PRIVATE verity_desktop verity_engine Qt6::Widgets Qt6::OpenGLWidgets)
     target_compile_definitions(verity_qt_shell PRIVATE VERITY_QT_SHELL=1)
   else()
     message(WARNING "Qt6 not found; Qt shell will not be built.")

@@ -26,6 +26,11 @@ public:
 
     // Camera controls
     void resetView();
+    // UI toggles
+    void setForceNoMultiDraw(bool v) { forceNoMultiDraw_ = v; }
+    bool forceNoMultiDraw() const { return forceNoMultiDraw_; }
+    void setShowGlInfo(bool v) { showGlInfo_ = v; }
+    bool showGlInfo() const { return showGlInfo_; }
 
 protected:
     void initializeGL() override;
@@ -59,6 +64,7 @@ private:
     bool showTrail_ {false};
     bool perPathColors_ {false};
     std::deque<QPointF> trail_; // recent actor positions (world)
+    bool showGlInfo_ {false};
 
     // Engine curves (2D path = X and Y curves)
     int curveX_ {-1};
@@ -78,6 +84,12 @@ private:
     QOpenGLBuffer actorVbo_ {QOpenGLBuffer::VertexBuffer};
     QOpenGLVertexArrayObject actorVao_;
     QOpenGLExtraFunctions* extra_ {nullptr};
+    // Avoid APIENTRY to keep this portable across moc builds
+    using PFNGLMULTIDRAWARRAYSPROC = void (*)(GLenum, const GLint*, const GLsizei*, GLsizei);
+    PFNGLMULTIDRAWARRAYSPROC multiDrawFn_ {nullptr};
+    bool canMultiDraw_ {false};
+    bool forceNoMultiDraw_ {false};
+    QString glInfoText_;
 
     // Worker build
     std::thread builder_;

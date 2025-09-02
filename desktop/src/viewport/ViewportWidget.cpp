@@ -5,6 +5,8 @@
 #include <QPainter>
 #include <QMouseEvent>
 #include <QWheelEvent>
+#include <QOpenGLContext>
+#include <QDebug>
 #include <cmath>
 
 ViewportWidget::ViewportWidget(QWidget* parent) : QOpenGLWidget(parent) {
@@ -25,6 +27,22 @@ void ViewportWidget::initializeGL() {
     initializeOpenGLFunctions();
     extra_ = context()->extraFunctions();
     lastFrameNs_ = timer_.nsecsElapsed();
+
+    // Probe for multi-draw support
+    QOpenGLContext* ctx = context();
+    const auto fmt = ctx->format();
+    const bool isGLES = ctx->isOpenGLES();
+    const bool hasARB = ctx->hasExtension(QByteArrayLiteral("GL_ARB_multi_draw_arrays"));
+    const bool hasEXT = ctx->hasExtension(QByteArrayLiteral("GL_EXT_multi_draw_arrays"));
+    const bool verOK = (fmt.majorVersion() > 1) || (fmt.majorVersion() == 1 && fmt.minorVersion() >= 4);
+    multiDrawFn_ = reinterpret_cast<PFNGLMULTIDRAWARRAYSPROC>(ctx->getProcAddress("glMultiDrawArrays"));
+    canMultiDraw_ = (multiDrawFn_ != nullptr) && (hasARB || hasEXT || verOK) && !isGLES;
+    qDebug() << "Viewport: multi-draw" << (canMultiDraw_ ? "ENABLED" : "DISABLED");
+    // Compose GL info text
+    glInfoText_ = QString("GL %1.%2 %3")
+                      .arg(fmt.majorVersion())
+                      .arg(fmt.minorVersion())
+                      .arg(isGLES ? "(ES)" : "(desktop)");
 
     // Build simple color-only shader
     const char* vs = R"GLSL(
@@ -245,7 +263,7 @@ void ViewportWidget::paintGL() {
     vao_.bind();
     const QRectF viewWorld(QPointF(-width()*0.5/zoom_ - pan_.x()/zoom_, -height()*0.5/zoom_ - pan_.y()/zoom_),
                            QSizeF(width()/zoom_, height()/zoom_));
-    if (perPathColors_ || extra_ == nullptr) {
+    if (perPathColors_ || !canMultiDraw_ || forceNoMultiDraw_) {
         // Per-path colors or no extra functions: loop draw with color changes
         int idx = 0;
         for (const auto& r : ranges_) {
@@ -258,12 +276,17 @@ void ViewportWidget::paintGL() {
             ++idx;
         }
     } else {
-        // Fallback: single color loop (use multi-draw when verified available)
-        prog_.setUniformValue("u_color", QVector4D(0.47f, 0.63f, 0.86f, 1.0f));
+        // Use multi-draw for fewer state changes
+        std::vector<GLint> firsts;
+        std::vector<GLsizei> counts;
+        firsts.reserve(ranges_.size()); counts.reserve(ranges_.size());
         for (const auto& r : ranges_) {
             if (!r.bounds.intersects(viewWorld)) continue;
-            glDrawArrays(GL_LINE_STRIP, r.start, r.count);
+            firsts.push_back(r.start);
+            counts.push_back(r.count);
         }
+        prog_.setUniformValue("u_color", QVector4D(0.47f, 0.63f, 0.86f, 1.0f));
+        if (!firsts.empty()) multiDrawFn_(GL_LINE_STRIP, firsts.data(), counts.data(), GLsizei(firsts.size()));
     }
     vao_.release();
     prog_.release();
@@ -322,15 +345,37 @@ void ViewportWidget::wheelEvent(QWheelEvent* e) {
 }
 
 void ViewportWidget::drawHud(QPainter& p) {
-    // FPS text
+    // Text HUD (stacked lines to avoid overlaps)
+    int xText = 10;
+    int yText = 18; // first baseline
+    int lineH = 18; // line spacing
     p.setPen(QColor(220, 220, 220));
-    p.drawText(QPoint(10, 20), QString("FPS: %1").arg(fps_, 0, 'f', 1));
-    // Controls
+    p.drawText(QPoint(xText, yText), QString("FPS: %1").arg(fps_, 0, 'f', 1));
+    yText += lineH;
+    QString mdText;
+    if (!canMultiDraw_) {
+        mdText = "MultiDraw: unsupported on this context";
+    } else if (forceNoMultiDraw_) {
+        mdText = "MultiDraw: supported (forced off)";
+    } else if (perPathColors_) {
+        mdText = "MultiDraw: supported (off due to per-path colors)";
+    } else {
+        mdText = "MultiDraw: active";
+    }
+    p.drawText(QPoint(xText, yText), mdText);
+    if (showGlInfo_) {
+        yText += lineH;
+        p.drawText(QPoint(xText, yText), QString("%1  ForcedNoMD:%2  Colors:%3")
+                                             .arg(glInfoText_)
+                                             .arg(forceNoMultiDraw_ ? "on" : "off")
+                                             .arg(perPathColors_ ? "on" : "off"));
+    }
+    yText += lineH;
     p.setPen(QColor(180, 180, 180));
-    p.drawText(QPoint(10, 38), QString("Drag: pan, Wheel: zoom, R: reset, T: trail, C: per-path colors"));
+    p.drawText(QPoint(xText, yText), QString("Drag: pan, Wheel: zoom, R: reset, T: trail, C: per-path colors"));
 
     // FPS history bar (last ~60 frames)
-    int x0 = 10, y0 = 60, w = 120, h = 30;
+    int x0 = 10, y0 = yText + 12, w = 120, h = 30;
     p.setPen(QColor(100,100,100));
     p.drawRect(x0, y0, w, h);
     if (!frameTimesMs_.empty()) {

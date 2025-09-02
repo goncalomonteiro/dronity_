@@ -24,7 +24,8 @@ public:
         addDockWidget(Qt::RightDockWidgetArea, graph);
 
         auto* viewportDock = new QDockWidget("Viewport", this);
-        viewportDock->setWidget(new ViewportWidget(this));
+        auto* viewport = new ViewportWidget(this);
+        viewportDock->setWidget(viewport);
         addDockWidget(Qt::LeftDockWidgetArea, viewportDock);
         setCentralWidget(new QLabel("Scene"));
 
@@ -32,6 +33,14 @@ public:
         auto* fileMenu = menuBar()->addMenu("&File");
         auto* saveSnap = new QAction("Save Snapshot Now", this);
         fileMenu->addAction(saveSnap);
+
+        auto* viewMenu = menuBar()->addMenu("&View");
+        auto* toggleMD = new QAction("Force No MultiDraw", this);
+        toggleMD->setCheckable(true);
+        viewMenu->addAction(toggleMD);
+        auto* toggleGL = new QAction("Show GL Info", this);
+        toggleGL->setCheckable(true);
+        viewMenu->addAction(toggleGL);
 
         // Status
         statusBar()->showMessage("Autosave: Off");
@@ -49,6 +58,10 @@ public:
                 statusBar()->showMessage("Autosave: No project set (VERITY_PROJECT_DIR)", 3000);
             });
         }
+
+        // Hook view toggles
+        connect(toggleMD, &QAction::toggled, viewport, [viewport](bool on){ viewport->setForceNoMultiDraw(on); });
+        connect(toggleGL, &QAction::toggled, viewport, [viewport](bool on){ viewport->setShowGlInfo(on); });
     }
 private:
     std::unique_ptr<verity::AutosaveScheduler> autosaver_;

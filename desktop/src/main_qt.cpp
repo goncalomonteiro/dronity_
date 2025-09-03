@@ -6,6 +6,7 @@
 #include <QMainWindow>
 #include <QMenuBar>
 #include <QStatusBar>
+#include <QSurfaceFormat>
 #include <QAction>
 #include <cstdlib>
 #include <memory>
@@ -69,6 +70,10 @@ private:
 };
 
 int main(int argc, char** argv) {
+    // Enable basic MSAA for smoother line joins where supported
+    QSurfaceFormat fmt = QSurfaceFormat::defaultFormat();
+    if (fmt.samples() < 4) fmt.setSamples(4);
+    QSurfaceFormat::setDefaultFormat(fmt);
     QApplication app(argc, argv);
     const char* proj = std::getenv("VERITY_PROJECT_DIR");
     MainWindow w(proj);

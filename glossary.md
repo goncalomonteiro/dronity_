@@ -49,6 +49,16 @@ This glossary explains the concepts introduced in each step. For every term you�
   - Technical: Static analysis that queries code semantics to find vulnerabilities.
   - Example: `.github/workflows/codeql.yml` analyses C++/Python/JS.
 
+- Pre-commit hooks (future)
+  - Simple: Checks that run before a commit is created.
+  - Technical: Git hooks (e.g., via `pre-commit`) format/lint staged files locally.
+  - Example: Would auto-run clang-format/black/ruff before pushing.
+
+- Build cache (ccache/sccache) (future)
+  - Simple: Reuse compiled results to avoid recompiling unchanged code.
+  - Technical: Hash compiler inputs; cache and retrieve object files.
+  - Example: Speeds up C++ builds in CI and locally.
+
 - clang-format / clang-tidy
   - Simple: Auto‑formatter and code checker for C++.
   - Technical: Formatting (style) and static analysis (lint) tools for C/C++.
@@ -123,6 +133,16 @@ This glossary explains the concepts introduced in each step. For every term you�
   - Technical: Copies `project.db` to `snapshots/slotX.db`, ideally after a WAL checkpoint.
   - Example: `scripts/sceneproj.py autosave ...` or Qt shell “Save Snapshot Now”.
 
+- Integrity check (PRAGMA quick_check) (future)
+  - Simple: Quick test to ensure the database isn’t corrupted.
+  - Technical: SQLite pragma that scans for low-level consistency issues.
+  - Example: Useful in CI after schema smoke tests.
+
+- VACUUM INTO (future)
+  - Simple: Create a compact copy of the database.
+  - Technical: SQLite command that writes the entire DB into a new file without blocking readers.
+  - Example: Safer snapshots for larger projects.
+
 ---
 
 ## Step 2 — Command Bus & Desktop Shell
@@ -161,6 +181,16 @@ This glossary explains the concepts introduced in each step. For every term you�
   - Simple: The window with dockable panels.
   - Technical: Qt6 Widgets app; hosts Timeline/Graph/Viewport panels and status bar.
   - Example: `desktop/src/main_qt.cpp` with “Save Snapshot Now”.
+
+- Last-applied revision pointer (future)
+  - Simple: Remember up to which revision the DB has been replayed.
+  - Technical: Store max revision id and apply only newer ones on restore.
+  - Example: Prevents duplicate inserts when restoring on the same DB.
+
+- UPSERT / Idempotency (future)
+  - Simple: Don’t error if a row already exists.
+  - Technical: `INSERT ... ON CONFLICT DO NOTHING` or DO UPDATE in SQLite.
+  - Example: Makes journal replays robust to partial application.
 
 ---
 
@@ -245,10 +275,55 @@ This glossary explains the concepts introduced in each step. For every term you�
   - Technical: Vertex Buffer Objects in OpenGL store geometry on the GPU.
   - Example: Viewport draws engine‑sampled trajectories from a VBO as a line strip.
 
+- Vertex Array Object (VAO)
+  - Simple: A saved recipe telling the GPU how to read a buffer.
+  - Technical: Captures vertex attribute bindings (locations, types, strides) so you don’t re-specify them every draw.
+  - Example: One VAO for path vertices, a separate VAO for the actor point to avoid state conflicts.
+
+- Line Strip
+  - Simple: One continuous polyline connecting a list of points.
+  - Technical: GL_LINE_STRIP draws N−1 segments from N vertices in one call; no index buffer required.
+  - Example: Paths are rendered as line strips built from sampled positions.
+
+- Multi-Draw
+  - Simple: Draw many paths at once instead of one-by-one.
+  - Technical: glMultiDrawArrays batches multiple strips using arrays of first indices and counts, reducing CPU/driver overhead.
+  - Example: When supported, the viewport batches visible paths in a single call; otherwise it loops per path.
+
+- Bounding Box (AABB)
+  - Simple: A rectangle that tightly wraps an object.
+  - Technical: Axis-aligned min/max X/Y bounds used for quick visibility tests against the view rectangle.
+  - Example: Paths with AABBs outside the view are culled (not drawn).
+
+- Ping-Pong VBO (future)
+  - Simple: Use two buffers and alternate updates/draws.
+  - Technical: CPU writes to one buffer while the GPU reads the other, then swap; avoids synchronization stalls.
+  - Example: Planned optimization to keep frame times flat when appending lots of vertices.
+
+- Instancing (future)
+  - Simple: Draw many identical markers with different positions in one go.
+  - Technical: Provide one mesh and per-instance transforms/colors; the GPU replicates it efficiently.
+  - Example: Useful for many actor markers or waypoints.
+
+- Index Buffer (IBO) (future)
+  - Simple: Reuse vertices instead of duplicating them.
+  - Technical: Store unique vertices once and draw via indices, reducing memory and bandwidth.
+  - Example: Shared geometry patterns across overlays.
+
+- Adaptive Sampling (future)
+  - Simple: More points where the curve bends, fewer where it’s straight.
+  - Technical: Curvature or screen-space error guides refinement to hit a visual tolerance.
+  - Example: Keeps trajectories smooth with fewer total vertices.
+
 - Keybinds / HUD
-  - Simple: Keyboard and on‑screen hints (e.g., press “R” to reset view).
+  - Simple: Keyboard and on-screen hints (e.g., press “R” to reset view).
   - Technical: Event handlers update camera state; HUD text and graphs drawn each frame.
   - Example: `ViewportWidget` shows FPS and controls; `R` resets pan/zoom.
+
+- Incremental Builder
+  - Simple: Add new paths piece by piece so the UI stays responsive.
+  - Technical: A QTimer triggers worker batches to sample curves and append vertices to the VBO on the next frame.
+  - Example: Paths appear progressively while FPS stays stable.
 
 ## Practical Restore Notes (Revisions)
 

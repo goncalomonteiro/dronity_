@@ -150,6 +150,7 @@ C:/Users/gonca/Desktop/repos/dronity_/desktop/build-msvc/verity_qt_shell_autogen
   C:/Qt/6.9.2/msvc2022_64/include/QtGui/QOpenGLFunctions \
   C:/Qt/6.9.2/msvc2022_64/include/QtGui/QSurfaceFormat \
   C:/Qt/6.9.2/msvc2022_64/include/QtGui/QTransform \
+  C:/Qt/6.9.2/msvc2022_64/include/QtGui/QVector3D \
   C:/Qt/6.9.2/msvc2022_64/include/QtGui/qaction.h \
   C:/Qt/6.9.2/msvc2022_64/include/QtGui/qbitmap.h \
   C:/Qt/6.9.2/msvc2022_64/include/QtGui/qbrush.h \

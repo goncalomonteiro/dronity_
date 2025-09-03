@@ -6,8 +6,10 @@
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QOpenGLContext>
+#include <QMatrix4x4>
 #include <QDebug>
 #include <cmath>
+#include <algorithm>
 
 ViewportWidget::ViewportWidget(QWidget* parent) : QOpenGLWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
@@ -19,8 +21,8 @@ ViewportWidget::~ViewportWidget() {
 }
 
 void ViewportWidget::resetView() {
-    zoom_ = 1.0;
-    pan_ = QPointF(0.0, 0.0);
+    camYaw_ = 0.0f; camPitch_ = 0.35f; camDist_ = 600.0f;
+    zoom_ = 1.0; pan_ = QPointF(0.0, 0.0);
 }
 
 void ViewportWidget::initializeGL() {
@@ -47,18 +49,11 @@ void ViewportWidget::initializeGL() {
     // Build simple color-only shader
     const char* vs = R"GLSL(
         #version 330 core
-        layout(location=0) in vec2 a_pos;
-        uniform vec2 u_viewport; // w,h in pixels
-        uniform float u_zoom;
-        uniform vec2 u_pan;
+        layout(location=0) in vec3 a_pos;
+        uniform mat4 u_mvp;
         uniform float u_pointSize;
         void main(){
-          // a_pos is in world units. Convert to pixels: zoom * a_pos.
-          // Pan is stored in pixels (from mouse drag). Origin is screen center.
-          vec2 px = u_zoom * a_pos + u_pan; // pixels relative to screen center
-          // Convert pixels to NDC: divide by half viewport and flip Y.
-          vec2 ndc = vec2(px.x / (0.5*u_viewport.x), -px.y / (0.5*u_viewport.y));
-          gl_Position = vec4(ndc, 0.0, 1.0);
+          gl_Position = u_mvp * vec4(a_pos, 1.0);
           gl_PointSize = u_pointSize;
         }
     )GLSL";
@@ -72,18 +67,44 @@ void ViewportWidget::initializeGL() {
     prog_.addShaderFromSourceCode(QOpenGLShader::Fragment, fs);
     prog_.link();
 
+    // No screen-space polyline program in 3D-only mode
+
     vao_.create();
     vao_.bind();
     vbo_.create();
     vbo_.bind();
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float)*2, (const void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float)*3, (const void*)0);
     vbo_.release();
     vao_.release();
+    // Prepare ping-pong buffer
+    vboPing_.create();
 
     actorVbo_.create();
+    actorVao_.create();
 
+    // Instanced markers VAO (per-instance position at location 0, divisor=1)
+    instVao_.create();
+    instVbo_.create();
+    instVao_.bind();
+    instVbo_.bind();
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float)*3, (const void*)0);
+    if (extra_) extra_->glVertexAttribDivisor(0, 1);
+    instVbo_.release();
+    instVao_.release();
+
+    glEnable(GL_MULTISAMPLE);
     glEnable(GL_PROGRAM_POINT_SIZE);
+    // Improve line continuity/quality
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_LINE_SMOOTH);
+    glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
+    glLineWidth(1.25f);
+
+    // Depth test off for path lines to ensure visual continuity
+    glDisable(GL_DEPTH_TEST);
 
     // Build base engine curves once
     buildBaseCurves();
@@ -97,17 +118,13 @@ void ViewportWidget::initializeGL() {
     scheduleBuildNext();
 }
 
-void ViewportWidget::resizeGL(int, int) {
-    // No-op; we use QPainter with widget coords.
-}
+void ViewportWidget::resizeGL(int, int) { /* no-op */ }
 
 void ViewportWidget::drawGrid(QPainter& p) {
     p.save();
     p.setRenderHint(QPainter::Antialiasing, false);
     QPen pen(QColor(60, 60, 60));
     p.setPen(pen);
-
-    // Draw grid lines in a window around origin
     const int count = 20;
     const double step = 50.0;
     for (int i = -count; i <= count; ++i) {
@@ -118,7 +135,6 @@ void ViewportWidget::drawGrid(QPainter& p) {
         QPointF d = QPointF(width()*0.5 + (count*step*zoom_ + pan_.x()), height()*0.5 - (i*step*zoom_ + pan_.y()));
         p.drawLine(c, d);
     }
-
     // Axes
     p.setPen(QPen(QColor(150, 60, 60)));
     p.drawLine(QPointF(width()*0.5 + (-1000*zoom_ + pan_.x()), height()*0.5 - (0 + pan_.y())),
@@ -126,31 +142,37 @@ void ViewportWidget::drawGrid(QPainter& p) {
     p.setPen(QPen(QColor(60, 150, 60)));
     p.drawLine(QPointF(width()*0.5 + (0 + pan_.x()), height()*0.5 - (-1000*zoom_ + pan_.y())),
                QPointF(width()*0.5 + (0 + pan_.x()), height()*0.5 - (1000*zoom_ + pan_.y())));
-
     p.restore();
 }
 
 void ViewportWidget::buildBaseCurves() {
     using namespace verity;
-    // Build two Hermite base curves for X(t), Y(t) over t in [0,1]
+    // Build three Hermite base curves for X(t), Y(t), Z(t) over t in [0,1]
     curveX_ = createCurve(CurveKind::Hermite);
     curveY_ = createCurve(CurveKind::Hermite);
+    curveZ_ = createCurve(CurveKind::Hermite);
     const int K = 50;
-    std::vector<Key> kx, ky;
-    kx.reserve(K); ky.reserve(K);
+    std::vector<Key> kx, ky, kz;
+    kx.reserve(K); ky.reserve(K); kz.reserve(K);
     for (int i = 0; i < K; ++i) {
         float t = float(i) / float(K - 1);
         float x = 200.0f * std::sin(2.0f * float(M_PI) * t);
         float y = 100.0f * std::sin(4.0f * float(M_PI) * t + 0.5f);
+        // Use integer multiples of 2π for perfect loop continuity at t=0 and t=1
+        float z = 50.0f  * std::sin(6.0f * float(M_PI) * t + 1.0f); // 3 full cycles
         float dxdt = 200.0f * 2.0f * float(M_PI) * std::cos(2.0f * float(M_PI) * t);
         float dydt = 100.0f * 4.0f * float(M_PI) * std::cos(4.0f * float(M_PI) * t + 0.5f);
+        float dzdt = 50.0f  * 6.0f * float(M_PI) * std::cos(6.0f * float(M_PI) * t + 1.0f);
         kx.push_back(verity::Key{t, x, dxdt, dxdt});
         ky.push_back(verity::Key{t, y, dydt, dydt});
+        kz.push_back(verity::Key{t, z, dzdt, dzdt});
     }
     setKeys(curveX_, kx);
     setKeys(curveY_, ky);
-    setConstantSpeed(curveX_, true);
-    setConstantSpeed(curveY_, true);
+    setKeys(curveZ_, kz);
+    setConstantSpeed(curveX_, false);
+    setConstantSpeed(curveY_, false);
+    setConstantSpeed(curveZ_, false);
 
 }
 
@@ -159,14 +181,16 @@ void ViewportWidget::scheduleBuildNext() {
     if (builder_.joinable()) return; // still working
     const int N = samplesPerPath_;
     std::vector<float> base;
-    base.resize(N * 2);
+    base.resize(N * 3);
     float bminx = 1e9f, bminy = 1e9f, bmaxx = -1e9f, bmaxy = -1e9f;
     for (int i = 0; i < N; ++i) {
         float t = float(i) / float(N - 1);
         float x = verity::evaluate(curveX_, t);
         float y = verity::evaluate(curveY_, t);
-        base[i*2+0] = x;
-        base[i*2+1] = y;
+        float z = verity::evaluate(curveZ_, t);
+        base[i*3+0] = x;
+        base[i*3+1] = y;
+        base[i*3+2] = z;
         bminx = std::min(bminx, x); bmaxx = std::max(bmaxx, x);
         bminy = std::min(bminy, y); bmaxy = std::max(bmaxy, y);
     }
@@ -185,23 +209,32 @@ void ViewportWidget::scheduleBuildNext() {
     builder_ = std::thread([=]() {
         std::vector<float> localVerts;
         std::vector<PathRange> localRanges;
-        localVerts.reserve((endPath - startPath) * N * 2);
+        localVerts.reserve((endPath - startPath) * N * 3);
         float centerShiftL = -0.5f * (totalPaths_ - 1) * spacing_;
         for (int p = startPath; p < endPath; ++p) {
             float offsetX = centerShiftL + p * spacing_;
-            int start = int(localVerts.size() / 2);
-            float minx = 1e9f, miny = 1e9f, maxx = -1e9f, maxy = -1e9f;
+            int start = int(localVerts.size() / 3);
+            float minx = 1e9f, miny = 1e9f, minz = 1e9f;
+            float maxx = -1e9f, maxy = -1e9f, maxz = -1e9f;
             for (int i = 0; i < N; ++i) {
-                float x = base[i*2+0] + offsetX;
-                float y = base[i*2+1];
+                float x = base[i*3+0] + offsetX;
+                float y = base[i*3+1];
+                float z = base[i*3+2];
                 localVerts.push_back(x);
                 localVerts.push_back(y);
+                localVerts.push_back(z);
                 minx = std::min(minx, x); maxx = std::max(maxx, x);
                 miny = std::min(miny, y); maxy = std::max(maxy, y);
+                minz = std::min(minz, z); maxz = std::max(maxz, z);
             }
             int count = N;
             QRectF bounds(QPointF(minx, miny), QPointF(maxx, maxy));
-            localRanges.push_back(PathRange{start, count, bounds});
+            QVector3D c((minx+maxx)*0.5f, (miny+maxy)*0.5f, (minz+maxz)*0.5f);
+            float dx = (maxx - minx);
+            float dy = (maxy - miny);
+            float dz = (maxz - minz);
+            float radius = 0.5f * std::sqrt(dx*dx + dy*dy + dz*dz);
+            localRanges.push_back(PathRange{start, count, bounds, minz, maxz, c, radius});
         }
         // publish
         pendingVerts_ = std::move(localVerts);
@@ -213,10 +246,16 @@ void ViewportWidget::scheduleBuildNext() {
 
 void ViewportWidget::updateGpuPath() {
     vao_.bind();
-    vbo_.bind();
-    vbo_.allocate(pathVerts_.data(), int(pathVerts_.size() * sizeof(float)));
-    vbo_.release();
+    // Ping-pong VBO update to avoid driver stalls on in-use buffers
+    QOpenGLBuffer& target = usePing_ ? vbo_ : vboPing_;
+    if (!target.isCreated()) target.create();
+    target.bind();
+    target.allocate(pathVerts_.data(), int(pathVerts_.size() * sizeof(float)));
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float)*3, (const void*)0);
+    target.release();
     vao_.release();
+    usePing_ = !usePing_;
 }
 
 void ViewportWidget::updateFps() {
@@ -237,56 +276,38 @@ void ViewportWidget::paintGL() {
 
     QPainter p(this);
     p.fillRect(rect(), QColor(20, 20, 22));
-    drawGrid(p);
+    if (!enable3D_) drawGrid(p);
     drawHud(p);
     p.end();
 
     // If worker has built new data, append to VBO
     if (pendingReady_.load()) {
-        int oldVerts = int(pathVerts_.size());
-        int oldCount = int(ranges_.size());
+        int oldFloats = int(pathVerts_.size());
+        int oldVerts = oldFloats / 3;
         pathVerts_.insert(pathVerts_.end(), pendingVerts_.begin(), pendingVerts_.end());
         for (const auto& r : pendingRanges_) {
-            ranges_.push_back(PathRange{r.start + oldVerts/2, r.count, r.bounds});
+            ranges_.push_back(PathRange{r.start + oldVerts, r.count, r.bounds, r.minZ, r.maxZ, r.center, r.radius});
         }
         updateGpuPath();
         pendingReady_ = false;
         if (builder_.joinable()) builder_.join();
     }
 
-    // Draw paths with GL line strip, with simple bounds culling
+    // Draw paths with GL line strip (3D only)
     prog_.bind();
-    prog_.setUniformValue("u_viewport", QVector2D(float(width()), float(height())));
-    prog_.setUniformValue("u_zoom", float(zoom_));
-    prog_.setUniformValue("u_pan", QVector2D(float(pan_.x()), float(pan_.y())));
+    updateMatrices();
+    prog_.setUniformValue("u_mvp", mvp_);
     prog_.setUniformValue("u_color", QVector4D(0.47f, 0.63f, 0.86f, 1.0f));
     vao_.bind();
-    const QRectF viewWorld(QPointF(-width()*0.5/zoom_ - pan_.x()/zoom_, -height()*0.5/zoom_ - pan_.y()/zoom_),
-                           QSizeF(width()/zoom_, height()/zoom_));
-    if (perPathColors_ || !canMultiDraw_ || forceNoMultiDraw_) {
-        // Per-path colors or no extra functions: loop draw with color changes
-        int idx = 0;
-        for (const auto& r : ranges_) {
-            if (!r.bounds.intersects(viewWorld)) { ++idx; continue; }
-            // simple palette
-            float hue = (idx % 12) / 12.0f;
-            QVector4D col(0.47f + 0.4f*hue, 0.63f - 0.3f*hue, 0.86f, 1.0f);
-            prog_.setUniformValue("u_color", col);
-            glDrawArrays(GL_LINE_STRIP, r.start, r.count);
-            ++idx;
-        }
-    } else {
-        // Use multi-draw for fewer state changes
-        std::vector<GLint> firsts;
-        std::vector<GLsizei> counts;
-        firsts.reserve(ranges_.size()); counts.reserve(ranges_.size());
-        for (const auto& r : ranges_) {
-            if (!r.bounds.intersects(viewWorld)) continue;
-            firsts.push_back(r.start);
-            counts.push_back(r.count);
-        }
-        prog_.setUniformValue("u_color", QVector4D(0.47f, 0.63f, 0.86f, 1.0f));
-        if (!firsts.empty()) multiDrawFn_(GL_LINE_STRIP, firsts.data(), counts.data(), GLsizei(firsts.size()));
+    // Draw all paths as single line strips (no 2D/NDC expansion)
+    int idx = 0;
+    for (const auto& r : ranges_) {
+        // simple palette per path for debugging continuity
+        float hue = (idx % 12) / 12.0f;
+        QVector4D col(0.47f + 0.4f*hue, 0.63f - 0.3f*hue, 0.86f, 1.0f);
+        prog_.setUniformValue("u_color", col);
+        glDrawArrays(GL_LINE_STRIP, r.start, r.count);
+        ++idx;
     }
     vao_.release();
     prog_.release();
@@ -295,30 +316,46 @@ void ViewportWidget::paintGL() {
     float t = std::fmod(float(timer_.elapsed()) * 0.00025f, 1.0f); // 0.25 cycles per second
     float ax = verity::evaluate(curveX_, t) + firstOffsetX_;
     float ay = verity::evaluate(curveY_, t);
-    float actor[2] = {ax, ay};
-    if (showTrail_) {
-        trail_.push_back(QPointF(actor[0], actor[1]));
-        if (trail_.size() > 200) trail_.pop_front();
-    } else {
-        trail_.clear();
-    }
+    float az = verity::evaluate(curveZ_, t);
+    float actor[3] = {ax, ay, az};
     actorVbo_.bind();
-    actorVbo_.allocate(actor, sizeof(actor));
+    actorVbo_.allocate(actor, sizeof(float)*3);
     actorVbo_.release();
 
     actorVao_.bind();
     actorVbo_.bind();
     // Re-specify attribute pointer to be robust across drivers
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float)*2, (const void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float)*3, (const void*)0);
     prog_.bind();
-    prog_.setUniformValue("u_viewport", QVector2D(float(width()), float(height())));
-    prog_.setUniformValue("u_zoom", float(zoom_));
-    prog_.setUniformValue("u_pan", QVector2D(float(pan_.x()), float(pan_.y())));
+    prog_.setUniformValue("u_mvp", mvp_);
     prog_.setUniformValue("u_color", QVector4D(0.94f, 0.78f, 0.24f, 1.0f));
     prog_.setUniformValue("u_pointSize", 8.0f);
     // Point size is set in the vertex shader via u_pointSize
     glDrawArrays(GL_POINTS, 0, 1);
+    // Instanced head markers for each path (animated along the strip)
+    std::vector<float> inst;
+    inst.reserve(ranges_.size() * 3);
+    for (const auto& r : ranges_) {
+        // always draw in this simplified path
+        int si = std::clamp(int(std::fmod(float(timer_.elapsed()) * 0.00025f, 1.0f) * float(r.count - 1)), 0, r.count - 1);
+        int idx0 = (r.start + si) * 3;
+        if (idx0 + 2 < int(pathVerts_.size())) {
+            inst.push_back(pathVerts_[idx0 + 0]);
+            inst.push_back(pathVerts_[idx0 + 1]);
+            inst.push_back(pathVerts_[idx0 + 2]);
+        }
+    }
+    if (!inst.empty()) {
+        instVao_.bind();
+        instVbo_.bind();
+        instVbo_.allocate(inst.data(), int(inst.size()*sizeof(float)));
+        prog_.setUniformValue("u_color", QVector4D(1.0f, 0.8f, 0.2f, 1.0f));
+        prog_.setUniformValue("u_pointSize", 6.0f);
+        if (extra_) extra_->glDrawArraysInstanced(GL_POINTS, 0, 1, GLsizei(inst.size()/3));
+        instVbo_.release();
+        instVao_.release();
+    }
     prog_.release();
     actorVbo_.release();
     actorVao_.release();
@@ -334,14 +371,23 @@ void ViewportWidget::mousePressEvent(QMouseEvent* e) {
 void ViewportWidget::mouseMoveEvent(QMouseEvent* e) {
     QPoint d = e->pos() - lastMouse_;
     lastMouse_ = e->pos();
-    // Pan in world units scaled by zoom
-    pan_ += QPointF(d.x(), -d.y());
+    if (enable3D_) {
+        camYaw_   += 0.005f * d.x();
+        camPitch_ += 0.005f * d.y();
+        camPitch_ = std::clamp(camPitch_, -1.2f, 1.2f);
+    } else {
+        pan_ += QPointF(d.x(), -d.y());
+    }
 }
 
 void ViewportWidget::wheelEvent(QWheelEvent* e) {
     const double step = e->angleDelta().y() / 120.0; // 1 step per notch
-    const double factor = std::pow(1.1, step);
-    zoom_ = std::clamp(zoom_ * factor, 0.1, 10.0);
+    if (enable3D_) {
+        camDist_ = std::clamp(camDist_ * float(std::pow(1.1, -step)), 50.0f, 5000.0f);
+    } else {
+        const double factor = std::pow(1.1, step);
+        zoom_ = std::clamp(zoom_ * factor, 0.1, 10.0);
+    }
 }
 
 void ViewportWidget::drawHud(QPainter& p) {
@@ -357,22 +403,24 @@ void ViewportWidget::drawHud(QPainter& p) {
         mdText = "MultiDraw: unsupported on this context";
     } else if (forceNoMultiDraw_) {
         mdText = "MultiDraw: supported (forced off)";
-    } else if (perPathColors_) {
-        mdText = "MultiDraw: supported (off due to per-path colors)";
     } else {
         mdText = "MultiDraw: active";
     }
     p.drawText(QPoint(xText, yText), mdText);
     if (showGlInfo_) {
         yText += lineH;
-        p.drawText(QPoint(xText, yText), QString("%1  ForcedNoMD:%2  Colors:%3")
-                                             .arg(glInfoText_)
-                                             .arg(forceNoMultiDraw_ ? "on" : "off")
-                                             .arg(perPathColors_ ? "on" : "off"));
+        QString info = QString("%1  ForcedNoMD:%2")
+                           .arg(glInfoText_)
+                           .arg(forceNoMultiDraw_ ? "on" : "off");
+        p.drawText(QPoint(xText, yText), info);
     }
     yText += lineH;
     p.setPen(QColor(180, 180, 180));
-    p.drawText(QPoint(xText, yText), QString("Drag: pan, Wheel: zoom, R: reset, T: trail, C: per-path colors"));
+    if (enable3D_) {
+        p.drawText(QPoint(xText, yText), QString("3D: Drag orbit, Wheel dolly, R reset, M toggle 2D"));
+    } else {
+        p.drawText(QPoint(xText, yText), QString("2D: Drag pan, Wheel zoom, R reset, M toggle 3D"));
+    }
 
     // FPS history bar (last ~60 frames)
     int x0 = 10, y0 = yText + 12, w = 120, h = 30;
@@ -387,30 +435,42 @@ void ViewportWidget::drawHud(QPainter& p) {
             p.fillRect(x0 + i*2, y0 + (h - bar), 1, bar, QColor(120, 180, 120));
         }
     }
-    // Trail (overlay in screen space)
-    if (showTrail_ && !trail_.empty()) {
-        p.setRenderHint(QPainter::Antialiasing, true);
-        p.setPen(QPen(QColor(255, 220, 100, 160), 2));
-        QPointF prev;
-        bool first=true;
-        for (const auto& w : trail_) {
-            QPointF px(width()*0.5 + (w.x()*zoom_ + pan_.x()), height()*0.5 - (w.y()*zoom_ + pan_.y()));
-            if (!first) p.drawLine(prev, px);
-            prev = px; first = false;
-        }
-    }
+    // No trail overlay in 3D-only mode
 }
 
 // Optional: reset view with 'R'
 void ViewportWidget::keyPressEvent(QKeyEvent* e) {
     if (e->key() == Qt::Key_R) {
         resetView();
-    } else if (e->key() == Qt::Key_T) {
-        showTrail_ = !showTrail_;
-    } else if (e->key() == Qt::Key_C) {
-        perPathColors_ = !perPathColors_;
+    } else if (e->key() == Qt::Key_M) {
+        enable3D_ = !enable3D_;
     }
     QOpenGLWidget::keyPressEvent(e);
+}
+
+void ViewportWidget::updateMatrices() {
+    mvp_.setToIdentity();
+    proj_.setToIdentity();
+    view_.setToIdentity();
+    if (enable3D_) {
+        proj_.perspective(45.0f, float(std::max(1, width()))/float(std::max(1, height())), 1.0f, 10000.0f);
+        QVector3D target(0.0f, 0.0f, 0.0f);
+        float cyaw = std::cos(camYaw_), syaw = std::sin(camYaw_);
+        float cp = std::cos(camPitch_), sp = std::sin(camPitch_);
+        QVector3D eye = target + QVector3D(camDist_ * cp * cyaw,
+                                           camDist_ * sp,
+                                           camDist_ * cp * syaw);
+        view_.lookAt(eye, target, QVector3D(0,1,0));
+        mvp_ = proj_ * view_;
+    } else {
+        float cx = float(-pan_.x() / zoom_);
+        float cy = float(-pan_.y() / zoom_);
+        float halfW = float(width()) * 0.5f / float(zoom_);
+        float halfH = float(height()) * 0.5f / float(zoom_);
+        proj_.ortho(cx - halfW, cx + halfW, cy - halfH, cy + halfH, -1000.0f, 1000.0f);
+        QMatrix4x4 flip; flip.setToIdentity(); flip.scale(1.0f, -1.0f, 1.0f);
+        mvp_ = flip * proj_ * view_;
+    }
 }
 
 // scheduleBuild() deprecated; incremental building uses scheduleBuildNext() via QTimer
